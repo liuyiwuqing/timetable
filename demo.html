@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>课表小工具 - 演示版</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+    <script src="https://unpkg.com/vuedraggable@4/dist/vuedraggable.umd.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+    <!-- 添加图标库 -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css">
+    <style>
+        body {
+            font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            background-color: #f8fafc;
+        }
+        .course-item {
+            transition: all 0.3s ease;
+            border-radius: 12px;
+        }
+        .course-item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 16px rgba(0,0,0,0.1);
+        }
+        .empty-cell {
+            min-height: 60px;
+            border: 2px dashed #d1d5db;
+            transition: all 0.2s ease;
+            border-radius: 12px;
+        }
+        .empty-cell:hover {
+            border-color: #3b82f6;
+            background-color: #eff6ff;
+        }
+        .drag-over {
+            border-color: #10b981 !important;
+            background-color: #d1fae5 !important;
+        }
+        .card {
+            border-radius: 16px;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.03);
+            transition: all 0.3s ease;
+        }
+        .card:hover {
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.07), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        }
+        .btn-gradient {
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            transition: all 0.3s ease;
+        }
+        .btn-gradient:hover {
+            background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+            transform: translateY(-1px);
+        }
+        .btn-secondary-gradient {
+            background: linear-gradient(135deg, #64748b 0%, #475569 100%);
+            transition: all 0.3s ease;
+        }
+        .btn-secondary-gradient:hover {
+            background: linear-gradient(135deg, #475569 0%, #334155 100%);
+            transform: translateY(-1px);
+        }
+        .btn-export-excel {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            transition: all 0.3s ease;
+        }
+        .btn-export-excel:hover {
+            background: linear-gradient(135deg, #059669 0%, #047857 100%);
+            transform: translateY(-1px);
+        }
+        .btn-export-image {
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+            transition: all 0.3s ease;
+        }
+        .btn-export-image:hover {
+            background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+            transform: translateY(-1px);
+        }
+        .input-field {
+            border-radius: 10px;
+            transition: all 0.2s ease;
+        }
+        .input-field:focus {
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+        }
+        .table-header {
+            background: linear-gradient(to bottom, #f8fafc, #f1f5f9);
+        }
+        
+        /* 深色模式特殊样式 */
+        .dark-mode .table-header {
+            background: linear-gradient(to bottom, #1e293b, #0f172a);
+        }
+        
+        .dark-mode .empty-cell {
+            border-color: #4b5563;
+        }
+        
+        .dark-mode .empty-cell:hover {
+            border-color: #8b5cf6;
+            background-color: rgba(139, 92, 246, 0.1);
+        }
+    </style>
+</head>
+<body class="bg-slate-50">
+    <div id="app">
+        <!-- 头部 -->
+        <header class="bg-white shadow-md border-b sticky top-0 z-10">
+            <div class="max-w-7xl mx-auto px-4 py-4">
+                <div class="flex justify-between items-center">
+                    <div class="flex items-center space-x-3">
+                        <i class="ri-calendar-schedule-fill text-4xl text-indigo-600"></i>
+                        <h1 class="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-purple-600">
+                            课表小工具
+                        </h1>
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <button @click="exportToExcel" class="btn-export-excel text-white px-5 py-2.5 rounded-full shadow-lg flex items-center space-x-2">
+                            <i class="ri-file-excel-2-line"></i>
+                            <span>导出Excel</span>
+                        </button>
+                        <button @click="exportToImage" class="btn-export-image text-white px-5 py-2.5 rounded-full shadow-lg flex items-center space-x-2">
+                            <i class="ri-image-line"></i>
+                            <span>导出图片</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <div class="max-w-7xl mx-auto px-4 py-8">
+            <!-- 控制面板 -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+                <!-- 课程管理 -->
+                <div class="card bg-white p-6">
+                    <div class="flex items-center space-x-2 mb-4">
+                        <i class="ri-book-open-line text-xl text-indigo-600"></i>
+                        <h3 class="text-lg font-semibold text-gray-800">课程管理</h3>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <div class="flex space-x-2 mb-2">
+                            <input
+                                v-model="newCourseName"
+                                type="text"
+                                placeholder="输入课程名称"
+                                class="input-field flex-1 px-4 py-2.5 border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                                @keyup.enter="addCourse"
+                            />
+                            <input
+                                v-model="newCourseColor"
+                                type="color"
+                                class="w-12 h-11 border border-gray-300 rounded-lg cursor-pointer"
+                            />
+                        </div>
+                        <button @click="addCourse" class="w-full btn-gradient text-white py-2.5 rounded-lg shadow-md flex items-center justify-center space-x-2">
+                            <i class="ri-add-line"></i>
+                            <span>添加课程</span>
+                        </button>
+                    </div>
+
+                    <div class="space-y-2 max-h-60 overflow-y-auto pr-1">
+                        <div
+                            v-for="course in courses"
+                            :key="course.id"
+                            class="flex items-center justify-between p-3 rounded-xl border-2"
+                            :style="{ borderColor: course.color + '40', backgroundColor: course.color + '10' }"
+                        >
+                            <div class="flex items-center space-x-2">
+                                <div
+                                    class="w-5 h-5 rounded-full"
+                                    :style="{ backgroundColor: course.color }"
+                                ></div>
+                                <span class="font-medium">{{ course.name }}</span>
+                            </div>
+                            <button
+                                @click="removeCourse(course.id)"
+                                class="text-red-500 hover:text-red-700 text-sm p-1.5 rounded-full hover:bg-red-50 transition-colors"
+                            >
+                                <i class="ri-delete-bin-6-line"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 配置设置 -->
+                <div class="card bg-white p-6">
+                    <div class="flex items-center space-x-2 mb-4">
+                        <i class="ri-settings-3-line text-xl text-indigo-600"></i>
+                        <h3 class="text-lg font-semibold text-gray-800">课表配置</h3>
+                    </div>
+                    
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">
+                                <i class="ri-text text-indigo-500 mr-1"></i> 课表标题
+                            </label>
+                            <input
+                                v-model="config.title"
+                                type="text"
+                                class="input-field w-full px-4 py-2.5 border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                            />
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">
+                                <i class="ri-sun-line text-amber-500 mr-1"></i> 上午课程数
+                            </label>
+                            <input
+                                v-model.number="config.morningPeriods"
+                                type="number"
+                                min="1"
+                                max="6"
+                                class="input-field w-full px-4 py-2.5 border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                                @change="updateTimetable"
+                            />
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">
+                                <i class="ri-sun-foggy-line text-orange-500 mr-1"></i> 下午课程数
+                            </label>
+                            <input
+                                v-model.number="config.afternoonPeriods"
+                                type="number"
+                                min="1"
+                                max="6"
+                                class="input-field w-full px-4 py-2.5 border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                                @change="updateTimetable"
+                            />
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">
+                                <i class="ri-moon-line text-blue-500 mr-1"></i> 晚自习课程数
+                            </label>
+                            <input
+                                v-model.number="config.eveningPeriods"
+                                type="number"
+                                min="0"
+                                max="4"
+                                class="input-field w-full px-4 py-2.5 border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                                @change="updateTimetable"
+                            />
+                        </div>
+
+                        <div class="text-sm font-medium p-3 rounded-xl flex items-center justify-center space-x-2"
+                             :class="{'bg-indigo-50 text-indigo-700': currentTheme !== 'dark', 'bg-indigo-900 text-indigo-200': currentTheme === 'dark'}">
+                            <i class="ri-time-line"></i>
+                            <span>总计：{{ totalPeriods }} 节课</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 主题选择 -->
+                <div class="card bg-white p-6">
+                    <div class="flex items-center space-x-2 mb-4">
+                        <i class="ri-palette-line text-xl text-indigo-600"></i>
+                        <h3 class="text-lg font-semibold text-gray-800">主题选择</h3>
+                    </div>
+                    
+                    <div class="space-y-3">
+                        <div
+                            v-for="theme in themes"
+                            :key="theme.id"
+                            class="flex items-center justify-between p-4 rounded-xl border-2 cursor-pointer transition-all"
+                            :class="{
+                                'border-indigo-500 bg-indigo-50': currentTheme === theme.id,
+                                'border-gray-200 hover:border-gray-300': currentTheme !== theme.id
+                            }"
+                            @click="currentTheme = theme.id"
+                        >
+                            <div class="flex items-center space-x-3">
+                                <div class="flex space-x-1.5">
+                                    <div
+                                        class="w-5 h-5 rounded-full"
+                                        :style="{ backgroundColor: theme.colors.primary }"
+                                    ></div>
+                                    <div
+                                        class="w-5 h-5 rounded-full"
+                                        :style="{ backgroundColor: theme.colors.secondary }"
+                                    ></div>
+                                </div>
+                                <span class="font-medium">{{ theme.name }}</span>
+                            </div>
+                            <div v-if="currentTheme === theme.id" class="text-indigo-500 text-xl">
+                                <i class="ri-check-line"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 课程表 -->
+            <div id="timetable-container" class="card p-6 mb-8" :class="themeStyles.class" :style="{ backgroundColor: themeStyles.backgroundColor, color: themeStyles.color }">
+                <div class="text-center mb-6">
+                    <h2 class="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-purple-600">
+                        {{ config.title }}
+                    </h2>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full border-collapse border-2 rounded-xl overflow-hidden" :style="{ borderColor: currentThemeColors.border }">
+                        <thead>
+                            <tr>
+                                <th class="px-4 py-3 text-center font-semibold border-2 table-header min-w-[120px]" :style="{ borderColor: currentThemeColors.border }">
+                                    <div class="flex items-center justify-center space-x-1">
+                                        <i class="ri-time-line"></i>
+                                        <span>时间</span>
+                                    </div>
+                                </th>
+                                <th 
+                                    v-for="(day, index) in weekDays" 
+                                    :key="day" 
+                                    class="px-4 py-3 text-center font-semibold border-2 table-header min-w-[120px]"
+                                    :style="{ borderColor: currentThemeColors.border }"
+                                >
+                                    <div class="flex items-center justify-center space-x-1">
+                                        <i :class="[
+                                            index === 0 ? 'ri-calendar-2-line' : 
+                                            index === 1 ? 'ri-calendar-2-line' : 
+                                            index === 2 ? 'ri-calendar-2-line' : 
+                                            index === 3 ? 'ri-calendar-2-line' : 
+                                            'ri-calendar-2-line'
+                                        ]"></i>
+                                        <span>{{ day }}</span>
+                                    </div>
+                                </th>
+                            </tr>
+                        </thead>
+                        
+                        <tbody>
+                            <tr v-for="period in totalPeriods" :key="period">
+                                <td class="px-4 py-3 text-center border-2 min-w-[120px]" 
+                                    :class="{'bg-gray-50': currentTheme !== 'dark', 'bg-gray-800': currentTheme === 'dark'}"
+                                    :style="{ borderColor: currentThemeColors.border }">
+                                    <div class="text-sm font-medium">第{{ period }}节</div>
+                                    <div class="text-xs text-gray-500">{{ getTimeRange(period) }}</div>
+                                </td>
+                                
+                                <td 
+                                    v-for="day in 5" 
+                                    :key="`${day}-${period}`"
+                                    class="p-2 border-2 h-16 min-w-[120px] relative"
+                                    :style="{ borderColor: currentThemeColors.border }"
+                                    @drop="onDrop($event, day, period)"
+                                    @dragover.prevent="onDragOver($event)"
+                                    @dragenter.prevent
+                                    @dragleave="onDragLeave($event)"
+                                >
+                                    <div
+                                        v-if="getCourse(day, period)"
+                                        class="course-item w-full h-full flex items-center justify-center text-sm font-medium border-2 cursor-move"
+                                        :style="{ 
+                                            backgroundColor: getCourse(day, period).color + '20',
+                                            borderColor: getCourse(day, period).color,
+                                            color: getCourse(day, period).color
+                                        }"
+                                        draggable="true"
+                                        @dragstart="onDragStart($event, day, period)"
+                                    >
+                                        <div class="flex items-center space-x-1.5">
+                                            <i class="ri-book-2-line"></i>
+                                            <span>{{ getCourse(day, period).name }}</span>
+                                        </div>
+                                    </div>
+                                        <div
+                                            v-else
+                                            class="empty-cell w-full h-full flex items-center justify-center text-xs"
+                                            :class="{'text-gray-400': currentTheme !== 'dark', 'text-gray-500': currentTheme === 'dark'}"
+                                        >
+                                        <div class="flex flex-col items-center opacity-60">
+                                            <i class="ri-drag-move-line mb-1"></i>
+                                            <span>拖拽课程到此处</span>
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- 可用课程 -->
+                <div class="mt-8">
+                    <div class="flex items-center space-x-2 mb-4">
+                        <i class="ri-drag-drop-line text-xl text-indigo-600"></i>
+                        <h4 class="text-lg font-semibold text-gray-800">可用课程（拖拽到课表中）</h4>
+                    </div>
+                    <div class="flex flex-wrap gap-3">
+                        <div
+                            v-for="course in courses"
+                            :key="'pool-' + course.id"
+                            class="course-item px-4 py-2.5 text-sm font-medium border-2 cursor-move shadow-sm"
+                            :style="{ 
+                                backgroundColor: course.color + '20',
+                                borderColor: course.color,
+                                color: course.color
+                            }"
+                            draggable="true"
+                            @dragstart="onDragStartFromPool($event, course)"
+                        >
+                            <div class="flex items-center space-x-1.5">
+                                <i class="ri-book-2-line"></i>
+                                <span>{{ course.name }}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 操作按钮 -->
+            <div class="flex justify-center space-x-4 mt-8">
+                <button @click="randomAssignCourses" class="btn-gradient text-white px-6 py-3 rounded-full shadow-lg transition-colors text-lg flex items-center space-x-2">
+                    <i class="ri-shuffle-line"></i>
+                    <span>随机排课</span>
+                </button>
+                <button @click="clearTimetable" class="btn-secondary-gradient text-white px-6 py-3 rounded-full shadow-lg transition-colors text-lg flex items-center space-x-2">
+                    <i class="ri-delete-bin-line"></i>
+                    <span>清空课表</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref, computed, onMounted } = Vue;
+
+        createApp({
+            setup() {
+                // 响应式数据
+                const courses = ref([
+                    { id: '1', name: '语文', color: '#ef4444' },
+                    { id: '2', name: '数学', color: '#3b82f6' },
+                    { id: '3', name: '英语', color: '#10b981' },
+                    { id: '4', name: '物理', color: '#f59e0b' },
+                    { id: '5', name: '化学', color: '#8b5cf6' },
+                    { id: '6', name: '生物', color: '#06b6d4' },
+                    { id: '7', name: '历史', color: '#f97316' },
+                    { id: '8', name: '地理', color: '#84cc16' }
+                ]);
+
+                const config = ref({
+                    title: '班级课程表',
+                    morningPeriods: 4,
+                    afternoonPeriods: 4,
+                    eveningPeriods: 2
+                });
+
+                const timetable = ref([]);
+                const currentTheme = ref('default');
+                const newCourseName = ref('');
+                const newCourseColor = ref('#3b82f6');
+
+                const themes = ref([
+                    {
+                        id: 'default',
+                        name: '默认蓝色',
+                        colors: {
+                            primary: '#4f46e5',
+                            secondary: '#e5e7eb',
+                            background: '#ffffff',
+                            text: '#1f2937',
+                            border: '#d1d5db'
+                        }
+                    },
+                    {
+                        id: 'green',
+                        name: '清新绿色',
+                        colors: {
+                            primary: '#059669',
+                            secondary: '#d1fae5',
+                            background: '#f0fdf4',
+                            text: '#065f46',
+                            border: '#a7f3d0'
+                        }
+                    },
+                    {
+                        id: 'purple',
+                        name: '优雅紫色',
+                        colors: {
+                            primary: '#7c3aed',
+                            secondary: '#e9d5ff',
+                            background: '#faf5ff',
+                            text: '#581c87',
+                            border: '#c4b5fd'
+                        }
+                    },
+                    {
+                        id: 'orange',
+                        name: '活力橙色',
+                        colors: {
+                            primary: '#ea580c',
+                            secondary: '#ffedd5',
+                            background: '#fff7ed',
+                            text: '#7c2d12',
+                            border: '#fed7aa'
+                        }
+                    },
+                    {
+                        id: 'dark',
+                        name: '深色模式',
+                        colors: {
+                            primary: '#8b5cf6',
+                            secondary: '#4b5563',
+                            background: '#111827',
+                            text: '#f9fafb',
+                            border: '#6b7280'
+                        }
+                    }
+                ]);
+
+                // 计算属性
+                const totalPeriods = computed(() => 
+                    config.value.morningPeriods + config.value.afternoonPeriods + config.value.eveningPeriods
+                );
+
+                const weekDays = computed(() => ['周一', '周二', '周三', '周四', '周五']);
+
+                const currentThemeColors = computed(() => 
+                    themes.value.find(theme => theme.id === currentTheme.value)?.colors || themes.value[0].colors
+                );
+
+                const themeStyles = computed(() => {
+                    const isDark = currentTheme.value === 'dark';
+                    return {
+                        backgroundColor: currentThemeColors.value.background,
+                        color: currentThemeColors.value.text,
+                        class: isDark ? 'dark-mode' : ''
+                    };
+                });
+
+                // 拖拽相关变量
+                let draggedCourse = null;
+                let draggedFromCell = null;
+
+                // 方法
+                const initializeTimetable = () => {
+                    timetable.value = [];
+                    for (let day = 1; day <= 5; day++) {
+                        for (let period = 1; period <= totalPeriods.value; period++) {
+                            timetable.value.push({
+                                id: `${day}-${period}`,
+                                day,
+                                period,
+                                course: null
+                            });
+                        }
+                    }
+                };
+
+                const updateTimetable = () => {
+                    initializeTimetable();
+                };
+
+                const getCourse = (day, period) => {
+                    const cell = timetable.value.find(c => c.day === day && c.period === period);
+                    return cell?.course;
+                };
+
+                const setCourse = (day, period, course) => {
+                    const cell = timetable.value.find(c => c.day === day && c.period === period);
+                    if (cell) {
+                        cell.course = course;
+                    }
+                };
+
+                const getTimeRange = (period) => {
+                    const morningTimes = ['08:00-08:45', '08:55-09:40', '10:00-10:45', '10:55-11:40'];
+                    const afternoonTimes = ['14:30-15:15', '15:25-16:10', '16:30-17:15', '17:25-18:10'];
+                    const eveningTimes = ['19:00-19:45', '19:55-20:40'];
+
+                    if (period <= config.value.morningPeriods) {
+                        return morningTimes[period - 1] || `第${period}节`;
+                    } else if (period <= config.value.morningPeriods + config.value.afternoonPeriods) {
+                        return afternoonTimes[period - config.value.morningPeriods - 1] || `第${period}节`;
+                    } else {
+                        return eveningTimes[period - config.value.morningPeriods - config.value.afternoonPeriods - 1] || `第${period}节`;
+                    }
+                };
+
+                const addCourse = () => {
+                    if (newCourseName.value.trim()) {
+                        const newCourse = {
+                            id: Date.now().toString(),
+                            name: newCourseName.value.trim(),
+                            color: newCourseColor.value
+                        };
+                        courses.value.push(newCourse);
+                        newCourseName.value = '';
+                        newCourseColor.value = '#3b82f6';
+                    }
+                };
+
+                const removeCourse = (courseId) => {
+                    courses.value = courses.value.filter(course => course.id !== courseId);
+                    timetable.value.forEach(cell => {
+                        if (cell.course?.id === courseId) {
+                            cell.course = null;
+                        }
+                    });
+                };
+
+                const randomAssignCourses = () => {
+                    timetable.value.forEach(cell => {
+                        cell.course = null;
+                    });
+
+                    timetable.value.forEach(cell => {
+                        if (Math.random() > 0.3 && courses.value.length > 0) {
+                            const randomIndex = Math.floor(Math.random() * courses.value.length);
+                            cell.course = courses.value[randomIndex];
+                        }
+                    });
+                };
+
+                const clearTimetable = () => {
+                    timetable.value.forEach(cell => {
+                        cell.course = null;
+                    });
+                };
+
+                // 拖拽事件处理
+                const onDragStart = (event, day, period) => {
+                    const course = getCourse(day, period);
+                    if (course) {
+                        draggedCourse = course;
+                        draggedFromCell = { day, period };
+                        event.dataTransfer.effectAllowed = 'move';
+                    }
+                };
+
+                const onDragStartFromPool = (event, course) => {
+                    draggedCourse = course;
+                    draggedFromCell = null;
+                    event.dataTransfer.effectAllowed = 'copy';
+                };
+
+                const onDragOver = (event) => {
+                    event.preventDefault();
+                    event.currentTarget.classList.add('drag-over');
+                };
+
+                const onDragLeave = (event) => {
+                    event.currentTarget.classList.remove('drag-over');
+                };
+
+                const onDrop = (event, day, period) => {
+                    event.preventDefault();
+                    event.currentTarget.classList.remove('drag-over');
+                    
+                    if (draggedCourse) {
+                        if (draggedFromCell) {
+                            setCourse(draggedFromCell.day, draggedFromCell.period, null);
+                        }
+                        
+                        setCourse(day, period, draggedCourse);
+                        
+                        draggedCourse = null;
+                        draggedFromCell = null;
+                    }
+                };
+
+                // 导出功能
+                const exportToExcel = () => {
+                    const data = [];
+                    
+                    const header = ['时间', ...weekDays.value];
+                    data.push(header);
+
+                    for (let period = 1; period <= totalPeriods.value; period++) {
+                        const row = [getTimeRange(period)];
+                        
+                        for (let day = 1; day <= 5; day++) {
+                            const course = getCourse(day, period);
+                            row.push(course?.name || '');
+                        }
+                        data.push(row);
+                    }
+
+                    const ws = XLSX.utils.aoa_to_sheet(data);
+                    const wb = XLSX.utils.book_new();
+                    XLSX.utils.book_append_sheet(wb, ws, '课程表');
+                    XLSX.writeFile(wb, `${config.value.title}.xlsx`);
+                };
+
+                const exportToImage = async () => {
+                    const element = document.getElementById('timetable-container');
+                    if (element) {
+                        try {
+                            const canvas = await html2canvas(element, {
+                                backgroundColor: '#ffffff',
+                                scale: 2
+                            });
+                            const link = document.createElement('a');
+                            link.download = `${config.value.title}.png`;
+                            link.href = canvas.toDataURL();
+                            link.click();
+                        } catch (error) {
+                            alert('导出图片失败，请稍后重试');
+                        }
+                    }
+                };
+
+                // 初始化
+                onMounted(() => {
+                    initializeTimetable();
+                });
+
+                return {
+                    courses,
+                    config,
+                    timetable,
+                    currentTheme,
+                    themes,
+                    newCourseName,
+                    newCourseColor,
+                    totalPeriods,
+                    weekDays,
+                    currentThemeColors,
+                    themeStyles,
+                    getCourse,
+                    getTimeRange,
+                    addCourse,
+                    removeCourse,
+                    randomAssignCourses,
+                    clearTimetable,
+                    updateTimetable,
+                    onDragStart,
+                    onDragStartFromPool,
+                    onDragOver,
+                    onDragLeave,
+                    onDrop,
+                    exportToExcel,
+                    exportToImage
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
